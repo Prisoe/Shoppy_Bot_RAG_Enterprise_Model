@@ -1,0 +1,55 @@
+rules:
+  # ── Hard blocks ───────────────────────────────────────────────
+  - name: block_pii_requests
+    phase: both
+    match:
+      - "credit card number"
+      - "give me your password"
+      - "what is your password"
+      - "SIN number"
+      - "social insurance number"
+      - "social security number"
+      - "SSN"
+    action: block
+
+  - name: block_harmful_content
+    phase: post
+    match:
+      - "I hate"
+      - "you are stupid"
+      - "this is your fault"
+    action: block
+
+  # ── Approval gates ────────────────────────────────────────────
+  - name: refund_promise
+    phase: post
+    match:
+      - "I will refund you"
+      - "we will refund"
+      - "you will get a refund"
+      - "guaranteed refund"
+      - "full refund immediately"
+      - "refund right now"
+    action: require_approval
+
+  - name: guarantee_language
+    phase: post
+    match:
+      - "I guarantee"
+      - "100% guaranteed"
+      - "we promise"
+      - "I promise you"
+    action: require_approval
+
+  - name: compensation_offers
+    phase: post
+    match:
+      - "free month"
+      - "waive the fee"
+      - "credit your account"
+      - "give you a credit"
+    action: require_approval
+
+  # ── Citation requirement ──────────────────────────────────────
+  - name: require_citations
+    action: require_citations

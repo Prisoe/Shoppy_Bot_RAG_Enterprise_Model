@@ -1,0 +1,113 @@
+# ─────────────────────────────────────────────
+# Shoppy Bot RAG Enterprise Model — .gitignore
+# ─────────────────────────────────────────────
+
+# ── Secrets & credentials ─────────────────────
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+
+# ── Python ────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+.eggs/
+
+# ── Virtual environments ──────────────────────
+.venv/
+venv/
+env/
+ENV/
+.env.bak
+.env
+.env.example
+.env.fixed
+
+# ── Docker ────────────────────────────────────
+# Keep docker-compose.yml but ignore local overrides
+docker-compose.override.yml
+docker-compose.local.yml
+.docker/
+
+# ── Database ──────────────────────────────────
+*.sqlite
+*.sqlite3
+*.db
+pgdata/
+postgres_data/
+
+# ── Local storage / uploads ───────────────────
+/tmp/rag-docs/
+local_storage/
+uploads/
+*.upload
+
+# ── IDE ───────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Node (if any frontend added later) ────────
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# ── Logs ──────────────────────────────────────
+*.log
+logs/
+celery_logs/
+
+# ── Test / coverage ───────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+coverage.xml
+*.cover
+
+# ── Alembic ───────────────────────────────────
+# Keep migrations but ignore auto-generated versions
+# apps/api/src/db/migrations/versions/  ← keep these
+
+# ── AWS ───────────────────────────────────────
+.aws/
+aws_credentials
+
+# ── Jupyter (if used for analysis) ────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── Streamlit ─────────────────────────────────
+.streamlit/secrets.toml
+
+# ── Seed/temp scripts ─────────────────────────
+seed_kb.py
+apps/api/src/seed_kb.py
+
+# ── Build artifacts ───────────────────────────
+*.zip
+*.tar.gz

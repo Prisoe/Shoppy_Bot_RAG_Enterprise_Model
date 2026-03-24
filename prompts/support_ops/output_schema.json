@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["prospers_thoughts", "ssa_guidance", "merchant_response", "citations", "risk"],
+  "properties": {
+    "prospers_thoughts": {
+      "type": "string",
+      "description": "Internal monologue for SSA only. 2-4 sentences."
+    },
+    "ssa_guidance": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Step-by-step instructions for the SSA."
+    },
+    "merchant_response": {
+      "type": "string",
+      "description": "Copy-paste ready message for the merchant."
+    },
+    "citations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["chunk_id", "source_title", "quote"],
+        "properties": {
+          "chunk_id": { "type": "string" },
+          "source_title": { "type": "string" },
+          "quote": { "type": "string", "maxLength": 200 }
+        }
+      }
+    },
+    "risk": {
+      "type": "object",
+      "required": ["needs_approval", "flags"],
+      "properties": {
+        "needs_approval": { "type": "boolean" },
+        "flags": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

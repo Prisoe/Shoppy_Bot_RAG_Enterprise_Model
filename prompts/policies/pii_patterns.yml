@@ -1,0 +1,26 @@
+# PII redaction patterns (regex)
+# Applied to ALL input text before it reaches the LLM
+patterns:
+  - name: credit_card
+    regex: '\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b'
+    replacement: "[CARD_REDACTED]"
+
+  - name: ssn
+    regex: '\b\d{3}[- ]?\d{2}[- ]?\d{4}\b'
+    replacement: "[SSN_REDACTED]"
+
+  - name: sin_canada
+    regex: '\b\d{3}[- ]?\d{3}[- ]?\d{3}\b'
+    replacement: "[SIN_REDACTED]"
+
+  - name: password_inline
+    regex: '(?i)password\s*[:=]\s*\S+'
+    replacement: "[PASSWORD_REDACTED]"
+
+  - name: api_key_inline
+    regex: '(?i)(api[_\s-]?key|secret|token)\s*[:=]\s*\S+'
+    replacement: "[APIKEY_REDACTED]"
+
+  - name: email
+    regex: '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}'
+    replacement: "[EMAIL_REDACTED]"

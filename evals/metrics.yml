@@ -1,0 +1,15 @@
+metrics:
+  pass_rate:
+    description: "Percentage of cases that pass all assertions"
+    threshold_warn: 70
+    threshold_fail: 50
+
+  citation_rate:
+    description: "Percentage of cases with at least one citation"
+    threshold_warn: 80
+    threshold_fail: 60
+
+  approval_accuracy:
+    description: "Correct prediction of needs_approval"
+    threshold_warn: 85
+    threshold_fail: 70
