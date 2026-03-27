@@ -2,13 +2,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y \
-    gcc libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y gcc g++ libpq-dev && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/ ./src/
+COPY jobs/ ./jobs/
 
-CMD ["celery", "-A", "src.worker.celery_app", "worker", "--loglevel=info", "--concurrency=4"]
+ENV PYTHONPATH=/app:/app/api_src

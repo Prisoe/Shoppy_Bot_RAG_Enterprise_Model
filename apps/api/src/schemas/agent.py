@@ -1,22 +1,12 @@
 from pydantic import BaseModel, Field
 from typing import Optional
-from uuid import UUID
-
-
-class OrderContext(BaseModel):
-    order_id: Optional[str] = None
-    order_status: Optional[str] = None
-    total_price: Optional[str] = None
-    currency: Optional[str] = None
-    items: Optional[list] = []
-    extra: Optional[dict] = {}
 
 
 class TicketPayload(BaseModel):
-    id: Optional[str] = Field(default=None)
-    channel: Optional[str] = Field(default="chat")
+    id: Optional[str] = None
+    channel: Optional[str] = "chat"
     customer_message: str
-    order_context: Optional[OrderContext] = None
+    order_context: Optional[dict] = None
 
 
 class KBFilters(BaseModel):
@@ -25,8 +15,20 @@ class KBFilters(BaseModel):
 
 
 class ConversationMessage(BaseModel):
-    role: str  # "user" or "assistant"
+    role: str
     content: str
+
+
+class ImagePayload(BaseModel):
+    base64: str
+    media_type: str = "image/png"
+
+
+class LLMOverrides(BaseModel):
+    temperature: Optional[float] = None   # 0.0–1.0
+    max_tokens:  Optional[int]   = None   # 256–4096
+    top_k:       Optional[int]   = None   # 1–500
+    top_p:       Optional[float] = None   # 0.0–1.0
 
 
 class AgentRunRequest(BaseModel):
@@ -34,6 +36,8 @@ class AgentRunRequest(BaseModel):
     kb_filters: Optional[KBFilters] = KBFilters()
     agent_name: Optional[str] = "support_ops"
     conversation_history: Optional[list[ConversationMessage]] = []
+    image_data: Optional[list[ImagePayload]] = None
+    llm_overrides: Optional[LLMOverrides] = None
 
 
 class CitationOut(BaseModel):
@@ -41,6 +45,7 @@ class CitationOut(BaseModel):
     source_title: str
     source_url: Optional[str] = ""
     quote: str
+    confidence_score: Optional[float] = None
 
 
 class RiskOut(BaseModel):
@@ -49,7 +54,8 @@ class RiskOut(BaseModel):
 
 
 class AgentOutputOut(BaseModel):
-    prospers_thoughts: Optional[str] = None
+    shoppy_thoughts: Optional[str] = None
+    probing_questions: Optional[list[str]] = []
     ssa_guidance: Optional[list[str]] = []
     merchant_response: Optional[str] = None
     citations: Optional[list[CitationOut]] = []

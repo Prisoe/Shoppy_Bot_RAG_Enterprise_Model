@@ -28,6 +28,8 @@ async def run_agent(
     kb_filters: dict = None,
     agent_name: str = "support_ops",
     conversation_history: list = None,
+    image_data: list = None,
+    llm_overrides: dict = None,
 ) -> dict:
     """
     Full pipeline with multi-turn conversation support.
@@ -117,7 +119,7 @@ async def run_agent(
 
     # Format retrieved context with source URLs
     context_block = "\n\n".join(
-        f"[Source {i+1}: {c['metadata'].get('source_title', 'Shopify Help')} | URL: {c['metadata'].get('source_url', '')}]\n{c['text']}"
+        f"[Source {i+1}: {c['metadata'].get('source_title', 'Shopify Help')} | URL: {c['metadata'].get('source_url', '')} | Confidence: {c.get('confidence_score', 0.5):.0%}]\n{c['text']}"
         for i, c in enumerate(chunks)
     ) if chunks else "No KB articles found for this query."
 
@@ -149,7 +151,7 @@ async def run_agent(
 ## Required Output
 Return ONLY a valid JSON object:
 {{
-  "prospers_thoughts": "Internal reasoning about the issue, what KB articles apply, what context is missing",
+  "shoppy_thoughts": "Internal reasoning about the issue, what KB articles apply, what context is missing",
   "ssa_guidance": ["Step 1...", "Step 2..."],
   "merchant_response": "Direct, helpful response to the merchant with specific steps from KB if available",
   "citations": [
@@ -165,7 +167,16 @@ Important: If KB articles were found, use them to provide specific step-by-step 
 """
 
     # ── 7. LLM call ────────────────────────────────────────────────────────
-    llm_result = call_llm(system_prompt=system_prompt, user_message=user_message)
+    # Apply per-request LLM overrides (temperature, max_tokens, top_k, top_p)
+    llm_kwargs = {}
+    if llm_overrides:
+        for k in ("temperature", "max_tokens", "top_k", "top_p"):
+            if k in llm_overrides:
+                llm_kwargs[k] = llm_overrides[k]
+    if image_data:
+        llm_kwargs["image_data"] = image_data
+
+    llm_result = call_llm(system_prompt=system_prompt, user_message=user_message, **llm_kwargs)
     raw_output = llm_result["text"]
 
     # ── 8. Parse + validate ────────────────────────────────────────────────

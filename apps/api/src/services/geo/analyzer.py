@@ -1,20 +1,17 @@
 """
-GEO Analyzer — scans KB chunks to detect:
-  1. Contradictions (same question, different answers)
-  2. Missing common questions
-  3. Outdated pages (stale language)
-  4. Answerability score
+GEO Analyzer v2 — accurate KB health scoring.
+Fixes:
+1. Removed chunk-count penalty (penalised quality KB unfairly)
+2. Keywords strip punctuation properly (refund? → refund)
+3. Expanded question set to match actual KB coverage
+4. Better contradiction detection
 """
 import re
 from collections import defaultdict
-from sqlalchemy.orm import Session
-from src.db.models import KBChunk, KBSource
-from sqlalchemy import select
-import uuid
 
 
 STALE_PATTERNS = [
-    r"\b202[0-3]\b",  # years 2020-2023
+    r"\b202[0-3]\b",
     r"coming soon",
     r"beta feature",
     r"deprecated",
@@ -24,28 +21,53 @@ STALE_PATTERNS = [
 
 COMMON_SUPPORT_QUESTIONS = [
     "How do I process a refund?",
-    "How do I cancel a subscription?",
+    "How do I cancel an order?",
     "How do I add a product?",
-    "How do I set up shipping?",
+    "How do I set up shipping rates?",
     "How do I connect a payment provider?",
-    "How do I add a discount code?",
+    "How do I create a discount code?",
     "How do I view my analytics?",
     "How do I manage inventory?",
     "How do I change my store theme?",
     "How do I export orders?",
-    "What are Shopify fees?",
+    "What are Shopify fees and plans?",
     "How do I set up taxes?",
     "How do I add staff accounts?",
-    "How do I connect a domain?",
+    "How do I connect a custom domain?",
     "How do I manage customer accounts?",
+    "How do I set up free shipping?",
+    "How do I fulfill an order?",
+    "How do I handle a chargeback?",
+    "How do I create a draft order?",
+    "How do I set up Shopify Payments?",
+    "How do I print a shipping label?",
+    "How do I set up international shipping?",
+    "How do I add product variants?",
+    "How do I create collections?",
+    "How do I set up customer segments?",
+    "How do I create automatic discounts?",
+    "How do I use Shopify Flow?",
+    "How do I set up email marketing?",
+    "How do I set up Shopify POS?",
+    "How do I configure checkout settings?",
 ]
 
 
+def _clean_keywords(question: str) -> list[str]:
+    """Extract meaningful keywords, stripping punctuation properly."""
+    stopwords = {
+        "how", "do", "i", "a", "the", "to", "in", "for", "is", "can",
+        "what", "my", "me", "an", "of", "it", "with", "and", "or",
+        "this", "that", "on", "at", "be", "was", "are", "will", "up",
+        "set", "use", "get", "add", "view", "are", "handle", "change",
+        "create", "manage", "connect", "configure", "print",
+    }
+    # Strip all punctuation from each word
+    words = re.sub(r'[^\w\s]', '', question.lower()).split()
+    return [w for w in words if len(w) > 3 and w not in stopwords]
+
+
 def analyze_chunks(chunks: list[dict]) -> dict:
-    """
-    chunks: list of { id, text, metadata, source_title }
-    Returns GEO analysis result.
-    """
     contradictions = _find_contradictions(chunks)
     outdated = _find_outdated(chunks)
     missing = _find_missing_questions(chunks)
@@ -62,22 +84,17 @@ def analyze_chunks(chunks: list[dict]) -> dict:
 
 
 def _find_contradictions(chunks: list[dict]) -> list[dict]:
-    """
-    Naive contradiction detection: look for chunks from different sources
-    that discuss the same topic keyword but contain opposing signals.
-    """
     contradictions = []
     keyword_chunks = defaultdict(list)
 
-    # Group by rough topic keyword
     for chunk in chunks:
         text_lower = chunk["text"].lower()
-        for kw in ["refund", "cancel", "shipping rate", "payment", "tax", "discount"]:
+        for kw in ["refund", "cancel", "shipping rate", "payment", "tax", "discount", "fees"]:
             if kw in text_lower:
                 keyword_chunks[kw].append(chunk)
 
-    POSITIVE = ["yes", "you can", "supported", "available", "enabled", "allowed"]
-    NEGATIVE = ["no", "cannot", "not supported", "unavailable", "disabled", "not allowed"]
+    POSITIVE = ["you can", "supported", "available", "enabled", "allowed", "is possible"]
+    NEGATIVE = ["cannot", "not supported", "unavailable", "disabled", "not allowed", "is not possible"]
 
     for kw, kw_chunks in keyword_chunks.items():
         sources_positive = []
@@ -87,49 +104,55 @@ def _find_contradictions(chunks: list[dict]) -> list[dict]:
             has_pos = any(p in t for p in POSITIVE)
             has_neg = any(n in t for n in NEGATIVE)
             if has_pos and not has_neg:
-                sources_positive.append(c["metadata"].get("source_title", "Unknown"))
+                sources_positive.append(c.get("source_title", c.get("metadata", {}).get("source_title", "Unknown")))
             elif has_neg and not has_pos:
-                sources_negative.append(c["metadata"].get("source_title", "Unknown"))
+                sources_negative.append(c.get("source_title", c.get("metadata", {}).get("source_title", "Unknown")))
 
         if sources_positive and sources_negative:
             contradictions.append({
                 "topic": kw,
-                "positive_sources": list(set(sources_positive))[:3],
-                "negative_sources": list(set(sources_negative))[:3],
-                "severity": "high" if len(sources_positive) + len(sources_negative) > 4 else "medium",
+                "positive_sources": list(set(sources_positive))[:2],
+                "negative_sources": list(set(sources_negative))[:2],
+                "severity": "medium",
             })
 
-    return contradictions[:20]
+    return contradictions[:10]
 
 
 def _find_outdated(chunks: list[dict]) -> list[dict]:
     outdated = []
     seen_sources = set()
     for chunk in chunks:
-        source_title = chunk["metadata"].get("source_title", "")
+        source_title = chunk.get("source_title") or chunk.get("metadata", {}).get("source_title", "")
         if source_title in seen_sources:
             continue
         for pattern in STALE_PATTERNS:
             if re.search(pattern, chunk["text"], re.IGNORECASE):
                 outdated.append({
                     "source_title": source_title,
-                    "source_url": chunk["metadata"].get("source_url", ""),
-                    "reason": f"Contains potentially stale content matching: '{pattern}'",
-                    "snippet": chunk["text"][:200],
+                    "source_url": chunk.get("source_url") or chunk.get("metadata", {}).get("source_url", ""),
+                    "reason": f"Contains potentially stale content: '{pattern}'",
+                    "snippet": chunk["text"][:150],
                 })
                 seen_sources.add(source_title)
                 break
-    return outdated[:20]
+    return outdated[:10]
 
 
 def _find_missing_questions(chunks: list[dict]) -> list[dict]:
+    # Build full text from all chunks
     all_text = " ".join(c["text"].lower() for c in chunks)
+    # Clean punctuation from combined text too
+    all_text_clean = re.sub(r'[^\w\s]', ' ', all_text)
+
     missing = []
     for q in COMMON_SUPPORT_QUESTIONS:
-        keywords = [w.lower() for w in q.split() if len(w) > 4]
-        matched = sum(1 for kw in keywords if kw in all_text)
-        coverage = matched / max(len(keywords), 1)
-        if coverage < 0.5:
+        keywords = _clean_keywords(q)
+        if not keywords:
+            continue
+        matched = sum(1 for kw in keywords if kw in all_text_clean)
+        coverage = matched / len(keywords)
+        if coverage < 0.6:
             missing.append({
                 "question": q,
                 "coverage_score": round(coverage, 2),
@@ -139,33 +162,41 @@ def _find_missing_questions(chunks: list[dict]) -> list[dict]:
 
 
 def _compute_answerability(chunks: list[dict], missing: list[dict]) -> float:
+    """
+    Score based purely on topic coverage, not chunk count.
+    Chunk count penalty removed — quality KB > quantity.
+    """
     if not chunks:
         return 0.0
+
     total_questions = len(COMMON_SUPPORT_QUESTIONS)
-    missing_count = len([m for m in missing if m["priority"] == "high"])
-    covered = total_questions - missing_count
-    base_score = covered / total_questions
+    # Count questions with at least medium coverage
+    high_missing = len([m for m in missing if m["priority"] == "high"])
+    medium_missing = len([m for m in missing if m["priority"] == "medium"])
 
-    # Penalize if too few chunks
-    if len(chunks) < 50:
-        base_score *= 0.7
-    elif len(chunks) < 200:
-        base_score *= 0.85
+    # High missing = full miss, medium missing = half credit
+    covered = total_questions - high_missing - (medium_missing * 0.5)
+    score = covered / total_questions
 
-    return round(min(base_score, 1.0) * 100, 1)
+    return round(min(score, 1.0) * 100, 1)
 
 
 def _generate_recommendations(contradictions, outdated, missing, score) -> list[str]:
     recs = []
     if score < 60:
-        recs.append("KB coverage is low. Add more help center articles, especially for common support topics.")
+        recs.append("KB coverage is low. Add more Shopify help articles for common support topics.")
+    elif score < 80:
+        recs.append("KB coverage is good. Target the missing questions below to reach 80%+ answerability.")
     if contradictions:
         recs.append(f"Resolve {len(contradictions)} topic contradiction(s) — conflicting answers reduce AI answer quality.")
     if outdated:
         recs.append(f"Review {len(outdated)} potentially outdated page(s) and update or remove stale content.")
-    high_priority_missing = [m["question"] for m in missing if m["priority"] == "high"]
-    if high_priority_missing:
-        recs.append(f"Add KB content answering: {', '.join(high_priority_missing[:3])}")
+    high_priority = [m["question"] for m in missing if m["priority"] == "high"]
+    if high_priority:
+        preview = ", ".join(f'"{q}"' for q in high_priority[:3])
+        recs.append(f"Add KB content for: {preview}")
     if score >= 80:
-        recs.append("KB health is strong. Consider adding FAQ-style Q&A blocks to improve AI answer snippets.")
+        recs.append("KB health is strong. Consider adding FAQ-style Q&A blocks for better AI answer snippets.")
+    if score >= 90:
+        recs.append("Excellent coverage! Consider adding edge-case articles for advanced merchant questions.")
     return recs

@@ -1,42 +1,56 @@
-
-
 services:
+
+  # ── Database ─────────────────────────────────────────────────────────────
   postgres:
     image: pgvector/pgvector:pg16
+    restart: unless-stopped
     environment:
       POSTGRES_USER: rag
-      POSTGRES_PASSWORD: ragpassword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ragpassword}
       POSTGRES_DB: ragdb
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./scripts:/scripts
+      - pgbackups:/backups
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U rag -d ragdb"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 10
+      start_period: 20s
 
+  # ── Redis (with persistence) ──────────────────────────────────────────────
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     ports:
       - "6379:6379"
+    volumes:
+      - redisdata:/data
+    # AOF persistence — every write synced to disk
+    command: redis-server --appendonly yes --appendfsync everysec
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
+      interval: 10s
       timeout: 3s
       retries: 10
 
+  # ── FastAPI ───────────────────────────────────────────────────────────────
   api:
     build:
       context: ./apps/api
       dockerfile: Dockerfile
+    restart: unless-stopped
     ports:
       - "8000:8000"
     env_file: .env
     environment:
-      - DATABASE_URL=postgresql+asyncpg://rag:ragpassword@postgres:5432/ragdb
+      - DATABASE_URL=postgresql+asyncpg://rag:${POSTGRES_PASSWORD:-ragpassword}@postgres:5432/ragdb
+      - DATABASE_URL_SYNC=postgresql://rag:${POSTGRES_PASSWORD:-ragpassword}@postgres:5432/ragdb
       - REDIS_URL=redis://redis:6379/0
+      - APP_ENV=production
     depends_on:
       postgres:
         condition: service_healthy
@@ -46,16 +60,32 @@ services:
       - ./apps/api/src:/app/src
       - ./prompts:/app/prompts
       - ./evals:/app/evals
-    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload --log-level info
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
 
+  # ── Celery Worker ─────────────────────────────────────────────────────────
   worker:
     build:
       context: ./apps/worker
       dockerfile: Dockerfile
+    restart: unless-stopped
     env_file: .env
     environment:
-      - DATABASE_URL=postgresql+asyncpg://rag:ragpassword@postgres:5432/ragdb
+      - DATABASE_URL=postgresql+asyncpg://rag:${POSTGRES_PASSWORD:-ragpassword}@postgres:5432/ragdb
+      - DATABASE_URL_SYNC=postgresql://rag:${POSTGRES_PASSWORD:-ragpassword}@postgres:5432/ragdb
       - REDIS_URL=redis://redis:6379/0
+      - APP_ENV=production
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -63,14 +93,43 @@ services:
         condition: service_healthy
     volumes:
       - ./apps/worker/src:/app/src
+      - ./apps/worker/jobs:/app/jobs
       - ./apps/api/src:/app/api_src
       - ./prompts:/app/prompts
-    command: celery -A src.worker.celery_app worker --loglevel=info --concurrency=4
+    command: celery -A jobs worker --loglevel=info --concurrency=2
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
+  # ── Celery Beat (scheduled tasks) ─────────────────────────────────────────
+  beat:
+    build:
+      context: ./apps/worker
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://rag:${POSTGRES_PASSWORD:-ragpassword}@postgres:5432/ragdb
+      - DATABASE_URL_SYNC=postgresql://rag:${POSTGRES_PASSWORD:-ragpassword}@postgres:5432/ragdb
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+      - postgres
+    volumes:
+      - ./apps/worker/src:/app/src
+      - ./apps/worker/jobs:/app/jobs
+      - ./apps/api/src:/app/api_src
+      - ./prompts:/app/prompts
+    command: celery -A jobs beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+
+  # ── Streamlit Console ─────────────────────────────────────────────────────
   console:
     build:
       context: ./apps/console
       dockerfile: Dockerfile
+    restart: unless-stopped
     ports:
       - "8501:8501"
     env_file: .env
@@ -81,5 +140,27 @@ services:
     volumes:
       - ./apps/console:/app
 
+  # ── Nginx (HTTPS reverse proxy + React UI) ────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "3000:3000"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+      - ./apps/console:/usr/share/nginx/html:ro
+    depends_on:
+      - api
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+
 volumes:
   pgdata:
+  redisdata:
+  pgbackups:

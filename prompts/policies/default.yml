@@ -1,5 +1,5 @@
 rules:
-  # ── Hard blocks ───────────────────────────────────────────────
+  # ── Hard blocks ───────────────────────────────────────────────────────────
   - name: block_pii_requests
     phase: both
     match:
@@ -10,35 +10,53 @@ rules:
       - "social insurance number"
       - "social security number"
       - "SSN"
+      - "date of birth"
+      - "bank account number"
+      - "routing number"
+      - "passport number"
     action: block
 
   - name: block_harmful_content
     phase: post
     match:
-      - "I hate"
       - "you are stupid"
       - "this is your fault"
+      - "you are an idiot"
+      - "I hate you"
     action: block
 
-  # ── Approval gates ────────────────────────────────────────────
-  - name: refund_promise
+  - name: block_competitor_promotion
     phase: post
     match:
-      - "I will refund you"
-      - "we will refund"
-      - "you will get a refund"
+      - "use WooCommerce instead"
+      - "BigCommerce is better"
+      - "switch to Wix"
+      - "try Squarespace"
+    action: block
+
+  # ── Approval gates ────────────────────────────────────────────────────────
+  - name: no_refund_promises
+    phase: post
+    match:
+      - "I will refund"
       - "guaranteed refund"
       - "full refund immediately"
       - "refund right now"
+      - "we will refund you"
+      - "you will get a refund"
+      - "I'll refund"
+      - "we'll process your refund"
     action: require_approval
 
-  - name: guarantee_language
+  - name: no_guarantee_language
     phase: post
     match:
       - "I guarantee"
       - "100% guaranteed"
       - "we promise"
       - "I promise you"
+      - "rest assured we will"
+      - "I can assure you"
     action: require_approval
 
   - name: compensation_offers
@@ -48,8 +66,31 @@ rules:
       - "waive the fee"
       - "credit your account"
       - "give you a credit"
+      - "compensate you"
+      - "as a goodwill gesture"
+      - "I'll comp"
     action: require_approval
 
-  # ── Citation requirement ──────────────────────────────────────
+  - name: escalation_commitments
+    phase: post
+    match:
+      - "I will personally"
+      - "I will make sure"
+      - "I will follow up"
+      - "I will contact"
+      - "will be resolved within"
+    action: require_approval
+
+  - name: account_action_promises
+    phase: post
+    match:
+      - "I will suspend"
+      - "I will close your account"
+      - "I will upgrade your plan"
+      - "I will downgrade"
+      - "we will waive"
+    action: require_approval
+
+  # ── Citation requirement ──────────────────────────────────────────────────
   - name: require_citations
     action: require_citations

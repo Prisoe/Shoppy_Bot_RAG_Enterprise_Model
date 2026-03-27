@@ -1,50 +1,26 @@
 """
 Celery worker entrypoint.
-Run with: celery -A src.worker.celery_app worker --loglevel=info
+Tasks live in /app/jobs/ to avoid src package collision.
 """
 import sys
 import os
 
-# Inject the api src directory so worker can import api services
 sys.path.insert(0, "/app/api_src")
+sys.path.insert(0, "/app")
 
-from celery import Celery
-from pydantic_settings import BaseSettings
-from functools import lru_cache
+from jobs import celery_app
 
+# Import all task modules to register them
+import jobs.kb_ingest  # noqa
+import jobs.geo_scan   # noqa
+import jobs.run_evals  # noqa
 
-class WorkerSettings(BaseSettings):
-    redis_url: str = "redis://redis:6379/0"
+if __name__ == "__main__":
+    celery_app.start()
 
-    class Config:
-        env_file = ".env"
-        extra = "ignore"
-
-
-_settings = WorkerSettings()
-
-celery_app = Celery(
-    "rag_worker",
-    broker=_settings.redis_url,
-    backend=_settings.redis_url,
-    include=[
-        "src.jobs.kb_ingest",
-        "src.jobs.run_evals",
-        "src.jobs.geo_scan",
-    ],
-)
-
-celery_app.conf.update(
-    task_serializer="json",
-    result_serializer="json",
-    accept_content=["json"],
-    timezone="UTC",
-    enable_utc=True,
-    task_acks_late=True,
-    worker_prefetch_multiplier=1,
-    task_routes={
-        "jobs.kb_ingest.*": {"queue": "ingest"},
-        "jobs.run_evals.*": {"queue": "evals"},
-        "jobs.geo_scan.*": {"queue": "geo"},
-    },
-)
+# Import alerting signals (connects Celery task_failure etc.)
+try:
+    import jobs.alerting  # noqa — registers signal handlers
+    import jobs.log_archive  # noqa — registers archive task
+except ImportError as e:
+    print(f"[worker] Warning: could not import optional modules: {e}")
